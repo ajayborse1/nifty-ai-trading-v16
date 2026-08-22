@@ -1,4 +1,4 @@
-name: NIFTY AI Trading V16 - Build APK
+name: NIFTY AI Trading V16 - ZIP Auto Build
 
 on:
   workflow_dispatch:
@@ -18,7 +18,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Setup Java 17
+      - name: Find V16 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found in repository root."
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+
+      - name: Extract V16 project
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf extracted
+          mkdir extracted
+
+          unzip -q "$ZIP_FILE" -d extracted
+
+          PUBSPEC=$(find extracted -type f -name "pubspec.yaml" -print -quit)
+
+          if [ -z "$PUBSPEC" ]; then
+            echo "ERROR: pubspec.yaml not found inside ZIP."
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PUBSPEC")
+
+          echo "Flutter project found at: $PROJECT_DIR"
+
+          cp -a "$PROJECT_DIR"/. .
+
+          test -f pubspec.yaml
+          test -d lib
+
+          echo "Flutter project extracted successfully."
+
+      - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -28,29 +70,24 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: "3.29.2"
           cache: true
 
-      - name: Verify Flutter project
+      - name: Prepare Android project
+        shell: bash
         run: |
-          echo "Checking project..."
-          test -f pubspec.yaml
-          test -d lib
-          echo "pubspec.yaml found"
-          echo "lib directory found"
+          set -e
 
-      - name: Generate Android project
-        run: |
           rm -rf android
+
           flutter create \
             --platforms=android \
             --org com.virajworks \
             --project-name nifty_ai_trading .
 
-      - name: Install dependencies
+      - name: Flutter dependencies
         run: flutter pub get
 
-      - name: Analyze project
+      - name: Flutter analyze
         run: flutter analyze
 
       - name: Build Release APK
@@ -61,7 +98,7 @@ jobs:
           test -s build/app/outputs/flutter-apk/app-release.apk
           ls -lh build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NIFTY-V16-APK
